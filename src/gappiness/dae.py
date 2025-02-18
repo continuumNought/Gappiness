@@ -8,59 +8,70 @@ from sklearn.preprocessing import StandardScaler
 from math import sqrt
 
 
-class Encoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, encoded_dim):
-        super(Encoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
+class ResidualBlock(nn.Module):
+    def __init__(self, hidden_dim, alpha=0.5):
+        super().__init__()
+        self.block = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, encoded_dim),
-            nn.Tanh(),
+            nn.ReLU()
         )
-
+        self.alpha = nn.Parameter(torch.tensor(alpha))
 
     def forward(self, x):
-        return self.encoder(x)
+        return self.alpha * x + self.block(x)  # Residual connection (alpha * x + F(x))
 
 
-class Decoder(nn.Module):
-    def __init__(self, encoded_dim, hidden_dim, output_dim):
-        super(Decoder, self).__init__()
-        self.decoder = nn.Sequential(
+class ResNetMLPEncoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, encoded_dim, num_residual_blocks=2):
+        super().__init__()
+
+        layers = [
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU()
+        ]
+
+        layers += [ResidualBlock(hidden_dim) for _ in range(num_residual_blocks)]
+
+        layers += [
+            nn.Linear(hidden_dim, encoded_dim),
+            nn.BatchNorm1d(encoded_dim),
+        ]
+
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class ResNetMLPDecoder(nn.Module):
+    def __init__(self, encoded_dim, hidden_dim, output_dim, num_residual_blocks=2):
+        super().__init__()
+
+        layers = [
             nn.Linear(encoded_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
+            nn.ReLU()
+        ]
+
+        layers += [ResidualBlock(hidden_dim) for _ in range(num_residual_blocks)]
+
+        layers += [
             nn.Linear(hidden_dim, output_dim),
-        )
+        ]
 
+        self.model = nn.Sequential(*layers)
 
-    def forward(self, y):
-        return self.decoder(y)
+    def forward(self, x):
+        return self.model(x)
 
 
 class Autoencoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, encoded_dim):
         super(Autoencoder, self).__init__()
-        self.encoder = Encoder(input_dim, hidden_dim, encoded_dim)
-        self.decoder = Decoder(encoded_dim, hidden_dim, input_dim)
+        self.encoder = ResNetMLPEncoder(input_dim, hidden_dim, encoded_dim, num_residual_blocks=10)
+        self.decoder = ResNetMLPDecoder(encoded_dim, hidden_dim, input_dim, num_residual_blocks=10)
 
 
     def forward(self, x):
@@ -136,6 +147,7 @@ def train_dae(
 
     # Training loop
     for epoch in range(epochs):
+        epoch_loss = 0.
         for batch in train_loader:
             inputs = batch[0]  # Extract the input data
             noisy_inputs = add_noise(inputs)  # Corrupt data
@@ -144,13 +156,14 @@ def train_dae(
             # Forward pass
             outputs = autoencoder(noisy_inputs)
             loss = criterion(outputs, targets)
+            epoch_loss += loss.item()
 
             # Backpropagation and optimization
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        print(f"Epoch [{epoch + 1}/{epochs}], Train Loss: {loss / len(train_loader):.4f}")
+        print(f"Epoch [{epoch + 1}/{epochs}], Train Loss: {epoch_loss / len(train_loader):.4f}")
 
     if test_loader is not None:
         with torch.no_grad():

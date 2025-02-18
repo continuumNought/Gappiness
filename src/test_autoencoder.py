@@ -5,7 +5,7 @@ from datetime import datetime
 def main():
     train_loader, test_loader = dae.load_data(
         '../data/silva_data_1.npy',
-        256,
+        32,
         0.1,
         normalize=dae.standard_normalize,
     )
@@ -14,7 +14,8 @@ def main():
         train_loader,
         2,
         10,
-        5,
+        6,
+        epochs=100,
         add_noise=dae.add_gauss_noise(s=0.01),
         test_loader=test_loader,
     )
