@@ -123,6 +123,8 @@ def train_dae(
         criterion_factory=None,
         test_loader=None,
 ):
+    # TODO Figure out how to evaluate if the nn is actually working well
+    # TODO make sure that test loss isn't explained by the noise added to it
     if criterion_factory is None:
         criterion = nn.MSELoss()
 

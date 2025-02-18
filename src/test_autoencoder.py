@@ -13,9 +13,9 @@ def main():
     dae_trained = dae.train_dae(
         train_loader,
         2,
-        6,
+        10,
         5,
-        add_noise=dae.add_gauss_noise(),
+        add_noise=dae.add_gauss_noise(s=0.01),
         test_loader=test_loader,
     )
 
