@@ -16,7 +16,7 @@ def main():
         10,
         6,
         epochs=100,
-        add_noise=dae.add_gauss_noise(s=0.01),
+        add_noise=dae.add_2d_gaussian_noise,
         test_loader=test_loader,
     )
 
