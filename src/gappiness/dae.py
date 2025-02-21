@@ -5,7 +5,6 @@ import scipy.stats as stats
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from math import sqrt
 
 
 class ResidualBlock(nn.Module):
@@ -23,12 +22,14 @@ class ResidualBlock(nn.Module):
 
 
 class MLPBlock(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, input_dim, hidden_dim):
         super().__init__()
         self.block = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
         )
 
     def forward(self, x):
@@ -39,17 +40,9 @@ class Encoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, encoded_dim, mlp_blocks=2):
         super().__init__()
 
-        layers = [
-            nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU()
-        ]
-
-        layers += [MLPBlock(hidden_dim) for _ in range(mlp_blocks)]
-
-        layers += [
-            nn.Linear(hidden_dim, encoded_dim),
-        ]
+        layers = [MLPBlock(input_dim, hidden_dim)]
+        layers += [MLPBlock(hidden_dim, hidden_dim) for _ in range(mlp_blocks-1)]
+        layers += [nn.Linear(hidden_dim, encoded_dim)]
 
         self.model = nn.Sequential(*layers)
 
@@ -61,17 +54,9 @@ class Decoder(nn.Module):
     def __init__(self, encoded_dim, hidden_dim, output_dim, mlp_blocks=2):
         super().__init__()
 
-        layers = [
-            nn.Linear(encoded_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU()
-        ]
-
-        layers += [MLPBlock(hidden_dim) for _ in range(mlp_blocks)]
-
-        layers += [
-            nn.Linear(hidden_dim, output_dim),
-        ]
+        layers = [MLPBlock(encoded_dim, hidden_dim)]
+        layers += [MLPBlock(hidden_dim, hidden_dim) for _ in range(mlp_blocks-1)]
+        layers += [nn.Linear(hidden_dim, output_dim)]
 
         self.model = nn.Sequential(*layers)
 
@@ -80,10 +65,10 @@ class Decoder(nn.Module):
 
 
 class Autoencoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, encoded_dim):
+    def __init__(self, input_dim, hidden_dim, encoded_dim, mlp_blocks=10):
         super(Autoencoder, self).__init__()
-        self.encoder = Encoder(input_dim, hidden_dim, encoded_dim, mlp_blocks=10)
-        self.decoder = Decoder(encoded_dim, hidden_dim, input_dim, mlp_blocks=10)
+        self.encoder = Encoder(input_dim, hidden_dim, encoded_dim, mlp_blocks=mlp_blocks)
+        self.decoder = Decoder(encoded_dim, hidden_dim, input_dim, mlp_blocks=mlp_blocks)
 
 
     def forward(self, x):
@@ -127,14 +112,6 @@ def load_data(path_, batch_size, holdout_ratio=0.1, normalize=None):
     return train_loader, holdout_dataset
 
 
-def add_gauss_noise(mean=0, s=1):
-    def add_noise(tensor):
-        noise = torch.randn_like(tensor) * sqrt(s) + mean
-        return tensor + noise
-
-    return add_noise
-
-
 def add_2d_gaussian_noise(tensor, mean=(0.0, 0.0), cov_matrix=((0.1, 0.0), (0.0, 0.1))):
     """
     Adds 2D Gaussian noise to each row of a tensor (n x 2).
@@ -166,6 +143,7 @@ def train_dae(
         epochs=10,
         criterion_factory=None,
         test_dataset=None,
+        hidden_layers=10,
 ):
     if criterion_factory is None:
         criterion = nn.MSELoss()
@@ -173,8 +151,7 @@ def train_dae(
     else:
         criterion = criterion_factory()
 
-    autoencoder = Autoencoder(input_dim, hidden_dim, encoded_dim)
-    # optimizer = optim.Adagrad(autoencoder.parameters(), lr=0.01, weight_decay=1e-4)
+    autoencoder = Autoencoder(input_dim, hidden_dim, encoded_dim, mlp_blocks=hidden_layers)
     optimizer = torch.optim.SGD(autoencoder.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
 
     # Training loop
