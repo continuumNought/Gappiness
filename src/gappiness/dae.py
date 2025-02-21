@@ -1,15 +1,15 @@
-import numpy as np
 import torch
+import numpy as np
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset, random_split
+import scipy.stats as stats
+from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from math import sqrt
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, hidden_dim, alpha=0.5):
+    def __init__(self, hidden_dim, alpha=0.1):
         super().__init__()
         self.block = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -22,8 +22,21 @@ class ResidualBlock(nn.Module):
         return self.alpha * x + self.block(x)  # Residual connection (alpha * x + F(x))
 
 
-class ResNetMLPEncoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, encoded_dim, num_residual_blocks=2):
+class MLPBlock(nn.Module):
+    def __init__(self, hidden_dim):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class Encoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, encoded_dim, mlp_blocks=2):
         super().__init__()
 
         layers = [
@@ -32,7 +45,7 @@ class ResNetMLPEncoder(nn.Module):
             nn.ReLU()
         ]
 
-        layers += [ResidualBlock(hidden_dim) for _ in range(num_residual_blocks)]
+        layers += [MLPBlock(hidden_dim) for _ in range(mlp_blocks)]
 
         layers += [
             nn.Linear(hidden_dim, encoded_dim),
@@ -44,8 +57,8 @@ class ResNetMLPEncoder(nn.Module):
         return self.model(x)
 
 
-class ResNetMLPDecoder(nn.Module):
-    def __init__(self, encoded_dim, hidden_dim, output_dim, num_residual_blocks=2):
+class Decoder(nn.Module):
+    def __init__(self, encoded_dim, hidden_dim, output_dim, mlp_blocks=2):
         super().__init__()
 
         layers = [
@@ -54,7 +67,7 @@ class ResNetMLPDecoder(nn.Module):
             nn.ReLU()
         ]
 
-        layers += [ResidualBlock(hidden_dim) for _ in range(num_residual_blocks)]
+        layers += [MLPBlock(hidden_dim) for _ in range(mlp_blocks)]
 
         layers += [
             nn.Linear(hidden_dim, output_dim),
@@ -69,8 +82,8 @@ class ResNetMLPDecoder(nn.Module):
 class Autoencoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, encoded_dim):
         super(Autoencoder, self).__init__()
-        self.encoder = ResNetMLPEncoder(input_dim, hidden_dim, encoded_dim, num_residual_blocks=10)
-        self.decoder = ResNetMLPDecoder(encoded_dim, hidden_dim, input_dim, num_residual_blocks=10)
+        self.encoder = Encoder(input_dim, hidden_dim, encoded_dim, mlp_blocks=10)
+        self.decoder = Decoder(encoded_dim, hidden_dim, input_dim, mlp_blocks=10)
 
 
     def forward(self, x):
@@ -110,9 +123,8 @@ def load_data(path_, batch_size, holdout_ratio=0.1, normalize=None):
 
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    holdout_loader = DataLoader(holdout_dataset, batch_size=batch_size, shuffle=False)
 
-    return train_loader, holdout_loader
+    return train_loader, holdout_dataset
 
 
 def add_gauss_noise(mean=0, s=1):
@@ -153,10 +165,8 @@ def train_dae(
         add_noise,
         epochs=10,
         criterion_factory=None,
-        test_loader=None,
+        test_dataset=None,
 ):
-    # TODO Figure out how to evaluate if the nn is actually working well
-    # TODO make sure that test loss isn't explained by the noise added to it
     if criterion_factory is None:
         criterion = nn.MSELoss()
 
@@ -164,7 +174,8 @@ def train_dae(
         criterion = criterion_factory()
 
     autoencoder = Autoencoder(input_dim, hidden_dim, encoded_dim)
-    optimizer = optim.Adam(autoencoder.parameters(), lr=1e-3)
+    # optimizer = optim.Adagrad(autoencoder.parameters(), lr=0.01, weight_decay=1e-4)
+    optimizer = torch.optim.SGD(autoencoder.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
 
     # Training loop
     for epoch in range(epochs):
@@ -186,18 +197,42 @@ def train_dae(
 
         print(f"Epoch [{epoch + 1}/{epochs}], Train Loss: {epoch_loss / len(train_loader):.4f}")
 
-    if test_loader is not None:
-        with torch.no_grad():
-            val_loss = 0
-            for batch in test_loader:
-                inputs = batch[0]
-                noisy_inputs = add_noise(inputs)
-                targets = inputs
-
-                outputs = autoencoder(noisy_inputs)
-                loss = criterion(outputs, targets)
-                val_loss += loss.item()
-
-            print(f"Test Loss: {val_loss / len(test_loader):.4f}")
+    if test_dataset is not None:
+        validate(autoencoder, test_dataset, add_noise)
 
     return autoencoder
+
+
+def validate(model, test_data, add_noise, shapiro_alpha=0.05, significance_alpha=0.05):
+    with torch.no_grad():
+        inputs = test_data.tensors[0]
+        noisy_inputs = add_noise(inputs)
+        outputs = model(noisy_inputs)
+
+        # Convert to numpy arrays for use with other libraries
+        inputs = inputs.numpy()
+        noisy_inputs = noisy_inputs.numpy()
+        outputs = outputs.numpy()
+
+        noise = np.sum((noisy_inputs - inputs) ** 2, axis=1)
+        prediction_error = np.sum((outputs - inputs) ** 2, axis=1)
+        diff_ = prediction_error - noise
+
+        # Normality test
+        is_normal = True
+        _, shapiro_p = stats.shapiro(diff_)
+        if shapiro_p < shapiro_alpha:
+            is_normal = False
+
+        if is_normal:
+            _, sig_p = stats.ttest_rel(prediction_error, noise, alternative='greater')
+
+        else:
+            res = stats.wilcoxon(prediction_error, noise, alternative='greater')
+            sig_p = res.pvalue
+
+        if sig_p < significance_alpha:
+            print("Model did not reduce noise significantly")
+
+        else:
+            print("Model did reduce noise significantly")
