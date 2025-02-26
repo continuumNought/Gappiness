@@ -7,6 +7,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 
+# TODO
+# 1 train with noise, test without noise
+# 2 try testing residues even without a "good" model
+# 3 make deeper, possibly wider models
+# 4 Flag "exploding" gradients
+#
+# If no progress for DAE just move forward to mapper
+
+
 class ResidualBlock(nn.Module):
     def __init__(self, hidden_dim, alpha=0.1):
         super().__init__()
@@ -28,8 +37,8 @@ class MLPBlock(nn.Module):
             nn.Linear(input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            # nn.Linear(hidden_dim, hidden_dim),
+            # nn.ReLU(),
         )
 
     def forward(self, x):

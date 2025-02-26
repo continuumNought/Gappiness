@@ -17,6 +17,7 @@ def get_cov_matrix(path_):
 
 
 def get_scaled_cov(path_):
+    # TODO for wider dataset use svd to find principal directions of covariance matrix
     data = np.load(path_)
     data_n = dae.standard_normalize(data)
     data_cov =  np.cov(data_n, rowvar=False)
@@ -81,19 +82,20 @@ def main():
     )
 
     data_n_cov = get_scaled_cov(path_)
+    sigma_sqr = 0.05
 
     dae_trained = dae.train_dae(
         train_loader,
         2,
+        50,
         10,
-        6,
-        epochs=25,
+        epochs=20,
         add_noise=ft.partial(
             dae.add_2d_gaussian_noise,
-            cov_matrix=data_n_cov,
+            cov_matrix=sigma_sqr*data_n_cov,
         ),
         test_dataset=test_dataset,
-        hidden_layers=25,
+        hidden_layers=5,
     )
 
     time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M")
