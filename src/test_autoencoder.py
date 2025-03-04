@@ -81,21 +81,23 @@ def main():
         normalize=dae.standard_normalize,
     )
 
-    data_n_cov = get_scaled_cov(path_)
-    sigma_sqr = 0.05
+    # data_n_cov = get_scaled_cov(path_)
+    data_n_cov = get_cov_matrix(path_)
+    sigma_sqr = 0.001
 
     dae_trained = dae.train_dae(
         train_loader,
         2,
-        50,
-        10,
-        epochs=20,
+        100,
+        20,
+        epochs=10,
         add_noise=ft.partial(
             dae.add_2d_gaussian_noise,
             cov_matrix=sigma_sqr*data_n_cov,
         ),
         test_dataset=test_dataset,
         hidden_layers=5,
+        criterion_factory=lambda m: dae.FastJacobianRegularizedLoss(m, sigma_sqr=sigma_sqr)
     )
 
     time_stamp = datetime.now().strftime("%Y-%m-%d-%H:%M")
