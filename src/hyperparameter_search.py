@@ -17,6 +17,43 @@ def select_loss(loss, model, sigma_sqr):
     return MSELossWrapper()
 
 
+import optuna
+
+
+class ProportionalPruner(optuna.pruners.BasePruner):
+    def __init__(self, improve_ratio=0.9, patience=5, warmup=10):
+        self.patience = patience
+        self.warmup = warmup
+        self.misses = 0
+        self.last_loss = None
+        self.improve_ratio=improve_ratio
+
+    def prune(self, study, trial):
+        trial_number = trial.number
+        loss = trial.value
+        if trial_number < self.warmup:
+            self.last_loss = loss
+            return False
+
+        ratio_change = loss/self.last_loss
+        self.last_loss = loss
+        if ratio_change <= self.improve_ratio:
+            self.misses = 0
+
+        else:
+            self.misses += 1
+
+        return self.misses >= self.patience
+
+
+class CombinedPruner(optuna.pruners.BasePruner):
+    def __init__(self, pruners):
+        self.pruners = pruners
+
+    def prune(self, study, trial):
+        return any(pruner.prune(study, trial) for pruner in self.pruners)
+
+
 def objective_factory(data_path, input_dim, max_epochs=100):
     def objective(trial):
         hyperparams = {
@@ -112,7 +149,10 @@ def objective_factory(data_path, input_dim, max_epochs=100):
 def run_study(study_name, storage, input_dim, data_path, n_warmup_steps=10, n_trials=100):
     study = optuna.create_study(
         direction="minimize",
-        pruner=optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps),
+        pruner=CombinedPruner([
+            optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps),
+            ProportionalPruner(warmup=n_warmup_steps)
+        ]),
         study_name=study_name,
         storage=storage,
         load_if_exists=True,
@@ -154,7 +194,7 @@ def main():
     for p in procs:
         p.join()
 
-    study = optuna.create_study(storage=storage, study_name=study_name)
+    study = optuna.create_study(storage=storage, study_name=study_name, load_if_exists=True)
     print(f'Best Parameters: {study.best_params}')
     print(f'Best Loss: {study.best_value}')
 
