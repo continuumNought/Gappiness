@@ -1,11 +1,14 @@
-import torch
 import torch.nn as nn
 import torch.autograd.functional as F
-import numpy as np
-import scipy.stats as stats
-from torch.utils.data import DataLoader, TensorDataset
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+
+
+class MSELossWrapper(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss()
+
+    def forward(self, inputs, outputs, targets):
+        return self.mse.forward(outputs, targets)
 
 
 class JacobianRegularizedLoss(nn.Module):
