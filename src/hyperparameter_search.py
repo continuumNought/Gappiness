@@ -27,10 +27,11 @@ class ProportionalPruner(optuna.pruners.BasePruner):
         self.misses = 0
         self.last_loss = None
         self.improve_ratio=improve_ratio
+        assert(warmup >= patience)
 
     def prune(self, study, trial):
         trial_number = trial.number
-        loss = trial.value
+        loss = trial.intermediate_values[-1]
         if trial_number < self.warmup:
             self.last_loss = loss
             return False
