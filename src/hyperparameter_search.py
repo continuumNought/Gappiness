@@ -1,5 +1,6 @@
 import optuna
 import torch
+import time
 import functools as ft
 from torch.utils.tensorboard import SummaryWriter
 from gappiness.loss import FastJacobianRegularizedLoss, MSELossWrapper
@@ -142,7 +143,13 @@ def main():
 
     # Run parallel studies
     procs = [Process(target=study_runner) for _ in range(0,tasks)]
-    for p in procs:
+    procs[0].start()
+
+    # This is to prevent a data race between the initial processes that
+    # try to setup the database
+    time.sleep(2)
+
+    for p in procs[1:]:
         p.start()
     for p in procs:
         p.join()
