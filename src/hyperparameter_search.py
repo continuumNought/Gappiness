@@ -20,19 +20,19 @@ def select_loss(loss, model, sigma_sqr):
 import optuna
 
 
-class ProportionalPruner(optuna.pruners.BasePruner):
+class EarlyStop:
     def __init__(self, improve_ratio=0.9, patience=5, warmup=10):
         self.patience = patience
         self.warmup = warmup
         self.misses = 0
         self.last_loss = None
         self.improve_ratio=improve_ratio
+        self.epoch = 0
         assert(warmup >= patience)
 
-    def prune(self, study, trial):
-        trial_number = trial.number
-        loss = trial.intermediate_values[-1]
-        if trial_number < self.warmup:
+    def stop(self, loss):
+        self.epoch += 1
+        if self.epoch <= self.warmup:
             self.last_loss = loss
             return False
 
@@ -45,14 +45,6 @@ class ProportionalPruner(optuna.pruners.BasePruner):
             self.misses += 1
 
         return self.misses >= self.patience
-
-
-class CombinedPruner(optuna.pruners.BasePruner):
-    def __init__(self, pruners):
-        self.pruners = pruners
-
-    def prune(self, study, trial):
-        return any(pruner.prune(study, trial) for pruner in self.pruners)
 
 
 def objective_factory(data_path, input_dim, max_epochs=100):
@@ -99,6 +91,7 @@ def objective_factory(data_path, input_dim, max_epochs=100):
         criterion = select_loss(loss, model, sigma_sqr)
 
         with SummaryWriter(log_dir=f'runs/optuna_trial_{trial.number}') as writer:
+            stopper = EarlyStop()
             for epoch in range(max_epochs):
                 epoch_loss = 0.
                 model.train()
@@ -128,11 +121,14 @@ def objective_factory(data_path, input_dim, max_epochs=100):
                     inputs = test_dataset.tensors[0]
                     noisy_inputs = add_2d_gaussian_noise(inputs, cov_matrix=cov_matrix)
                     outputs = model(noisy_inputs)
-                    test_loss = criterion(noisy_inputs, outputs, inputs).item()/len(inputs)
+                    test_loss = criterion(noisy_inputs, outputs, inputs).item()
                     writer.add_scalar("Loss/Test", test_loss, epoch)
 
                 if trial.should_prune():
                     raise optuna.exceptions.TrialPruned()
+
+                if stopper.stop(epoch_loss):
+                    break
 
             writer.add_hparams(
                 hyperparams,
@@ -150,10 +146,7 @@ def objective_factory(data_path, input_dim, max_epochs=100):
 def run_study(study_name, storage, input_dim, data_path, n_warmup_steps=10, n_trials=100):
     study = optuna.create_study(
         direction="minimize",
-        pruner=CombinedPruner([
-            optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps),
-            ProportionalPruner(warmup=n_warmup_steps)
-        ]),
+        pruner=optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps),
         study_name=study_name,
         storage=storage,
         load_if_exists=True,
