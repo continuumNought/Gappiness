@@ -1,10 +1,12 @@
 import optuna
 import torch
+import functools as ft
 from torch.utils.tensorboard import SummaryWriter
 from gappiness.loss import FastJacobianRegularizedLoss, MSELossWrapper
 from gappiness.model import Autoencoder
 from gappiness.data import load_data, standard_normalize
 from gappiness.noise import add_2d_gaussian_noise
+from multiprocessing import Process
 
 
 def select_loss(loss, model, sigma_sqr):
@@ -106,17 +108,49 @@ def objective_factory(data_path, input_dim, max_epochs=100):
     return objective
 
 
-def main():
+def run_study(study_name, storage, input_dim, data_path, n_warmup_steps=10, n_trials=100):
     study = optuna.create_study(
         direction="minimize",
-        pruner=optuna.pruners.MedianPruner(n_warmup_steps=10)
+        pruner=optuna.pruners.MedianPruner(n_warmup_steps=n_warmup_steps),
+        study_name=study_name,
+        storage=storage,
+        load_if_exists=True,
     )
+
     study.optimize(
-        objective_factory('../data/silva_data_1.npy', 2),
-        n_trials=1,
+        objective_factory(data_path, input_dim),
+        n_trials=n_trials,
+        n_jobs=1,
     )
 
+
+def main():
+    tasks = 2
+    study_name = "DAE-Hyperparameter-Tuning"
+    storage = "sqlite:///dae-hp-tuning.db"
+    data_path = '../data/silva_data_1.npy'
+    input_dim = 2
+
+    study_runner = ft.partial(
+        run_study,
+        study_name,
+        storage,
+        input_dim,
+        data_path,
+        n_trials=2,
+    )
+
+    # Run parallel studies
+    procs = [Process(target=study_runner) for _ in range(0,tasks)]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+
+    study = optuna.create_study(storage=storage, study_name=study_name)
     print(f'Best Parameters: {study.best_params}')
+    print(f'Best Loss: {study.best_value}')
 
 
-main()
+if __name__ == '__main__':
+    main()
