@@ -2,9 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 import scipy.stats as stats
-from torch.utils.data import DataLoader, TensorDataset
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 
 
 # TODO
@@ -99,35 +96,6 @@ class Autoencoder(nn.Module):
         # Save the trained encoder and decoder separately
         torch.save(self.encoder.state_dict(), encoder_path)
         torch.save(self.decoder.state_dict(), decoder_path)
-
-
-def standard_normalize(data_):
-    scaler = StandardScaler()
-    scaler.fit(data_)
-    return scaler.transform(data_)
-
-
-def load_data(path_, batch_size, holdout_ratio=0.1, normalize=None):
-    data = np.load(path_)
-    if normalize is not None:
-        data = normalize(data)
-    data_tensor = torch.tensor(data, dtype=torch.float32)
-
-    # Split data into training and holdout sets
-    train_data, holdout_data = train_test_split(
-        data_tensor,
-        test_size=holdout_ratio,
-        shuffle=True
-    )
-
-    # Create datasets
-    train_dataset = TensorDataset(train_data)
-    holdout_dataset = TensorDataset(holdout_data)
-
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-
-    return train_loader, holdout_dataset
 
 
 def train_dae(
