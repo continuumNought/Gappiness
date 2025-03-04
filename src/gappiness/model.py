@@ -1,3 +1,4 @@
+import inspect
 import torch
 import torch.nn as nn
 import numpy as np
@@ -91,11 +92,27 @@ class Autoencoder(nn.Module):
         decoded = self.decoder(encoded)
         return decoded
 
+    def save(self, save_path):
+        hyperparameters = {
+            k: getattr(self, k, None)
+            for k in inspect.signature(Autoencoder.__init__).parameters
+            if k != 'self'
+        }
 
-    def save(self, encoder_path, decoder_path):
-        # Save the trained encoder and decoder separately
-        torch.save(self.encoder.state_dict(), encoder_path)
-        torch.save(self.decoder.state_dict(), decoder_path)
+        cp = {
+            'hyperparameters': hyperparameters,
+            'state_dict': self.state_dict(),
+        }
+
+        torch.save(cp, save_path)
+
+    @classmethod
+    def load_from_path(cls, path_):
+        cp = torch.load(path_)
+        model = cls(**cp['hyperparameters'])
+        model.load_state_dict(cp['state_dict'])
+
+        return model
 
 
 def train_dae(
