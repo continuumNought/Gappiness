@@ -17,9 +17,6 @@ def select_loss(loss, model, sigma_sqr):
     return MSELossWrapper()
 
 
-import optuna
-
-
 class EarlyStop:
     def __init__(self, improve_ratio=0.9, patience=5, warmup=10):
         self.patience = patience
@@ -51,15 +48,20 @@ def objective_factory(data_path, input_dim, max_epochs=100):
     def objective(trial):
         hyperparams = {
             'batch_sz' : trial.suggest_categorical('batch_sz', [16,32,64]),
-            'hidden_dim' : trial.suggest_int('hidden_dim', 5, 200, step=5),
-            'encoded_dim' : trial.suggest_int('encoded_dim', 5, 100, step=5),
-            'hidden_layers' : trial.suggest_int('hidden_layers', 1, 20),
+            'hidden_dim' : trial.suggest_int('hidden_dim', 5, 205, step=10),
+            'encoded_dim' : trial.suggest_int('encoded_dim', 5, 105, step=10),
+            'hidden_layers' : trial.suggest_int('hidden_layers', 2, 20, step=2),
             'lr' : trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True),
-            'momentum' : trial.suggest_float('momentum', 0.5, 0.99),
+            'momentum' : trial.suggest_float('momentum', 0.5, 0.9),
             'weight_decay' : trial.suggest_float('weight_decay', 1e-6, 1e-2, log=True),
             'loss_fn' : trial.suggest_categorical('loss_fn', ['MSE', 'FJL']),
-            'sigma_sqr' : trial.suggest_float('sigma_sqr', 1e-6, 1.0, log=True),
+            'sigma_sqr' : trial.suggest_float('sigma_sqr', 1e-6, 1e-2, log=True),
         }
+
+        # Throw out trials with networks that are too big
+        if hyperparams['hidden_dim'] < hyperparams['encoded_dim'] \
+            or hyperparams['hidden_dim']*hyperparams['hidden_layers'] > 1000:
+            raise optuna.exceptions.TrialPruned()
 
         batch_sz = hyperparams['batch_sz']
         train_loader, test_dataset = load_data(
