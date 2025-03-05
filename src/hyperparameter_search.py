@@ -8,6 +8,29 @@ from gappiness.model import Autoencoder
 from gappiness.data import load_data, standard_normalize
 from gappiness.noise import add_2d_gaussian_noise
 from multiprocessing import Process
+from optuna.samplers import RandomSampler
+
+
+class ConstrainedSampler(RandomSampler):
+    def __init__(self, base_sampler=None):
+        super().__init__()
+        self.base_sampler = base_sampler or RandomSampler()
+
+    def sample_independent(self, study, trial, param_name, param_distribution):
+        while True:
+            value = self.base_sampler.sample_independent(study, trial, param_name, param_distribution)
+
+            hidden_dim = trial.params.get("hidden_dim", value if param_name == "hidden_dim" else None)
+            encoded_dim = trial.params.get("encoded_dim", value if param_name == "encoded_dim" else None)
+            hidden_layers = trial.params.get("hidden_layers", value if param_name == "hidden_layers" else None)
+
+            if hidden_dim is not None and encoded_dim is not None and hidden_dim < encoded_dim:
+                continue
+
+            if hidden_dim is not None and hidden_layers is not None and hidden_dim*hidden_layers > 1000:
+                continue
+
+            return value
 
 
 def select_loss(loss, model, sigma_sqr):
@@ -57,11 +80,6 @@ def objective_factory(data_path, input_dim, max_epochs=100):
             'loss_fn' : trial.suggest_categorical('loss_fn', ['MSE', 'FJL']),
             'sigma_sqr' : trial.suggest_float('sigma_sqr', 1e-6, 1e-2, log=True),
         }
-
-        # Throw out trials with networks that are too big
-        if hyperparams['hidden_dim'] < hyperparams['encoded_dim'] \
-            or hyperparams['hidden_dim']*hyperparams['hidden_layers'] > 1000:
-            raise optuna.exceptions.TrialPruned()
 
         batch_sz = hyperparams['batch_sz']
         train_loader, test_dataset = load_data(
@@ -129,6 +147,7 @@ def objective_factory(data_path, input_dim, max_epochs=100):
                 if trial.should_prune():
                     raise optuna.exceptions.TrialPruned()
 
+                # Stops training when the loss curve flattens
                 if stopper.stop(epoch_loss):
                     break
 
@@ -152,6 +171,7 @@ def run_study(study_name, storage, input_dim, data_path, n_warmup_steps=10, n_tr
         study_name=study_name,
         storage=storage,
         load_if_exists=True,
+        sampler=ConstrainedSampler(),
     )
 
     study.optimize(
