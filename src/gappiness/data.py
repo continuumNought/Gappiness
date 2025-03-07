@@ -3,6 +3,11 @@ import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
+
+def whiten(data_):
+    return PCA(whiten=True).fit_transform(data_)
 
 
 def standard_normalize(data_):
