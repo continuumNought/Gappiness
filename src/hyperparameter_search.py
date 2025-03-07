@@ -236,7 +236,7 @@ def run_study(
     )
 
 
-def tune(tasks, study_name, storage, data_path, input_dim, hyperparam_sample_args):
+def tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args):
     study_runner = ft.partial(
         run_study,
         study_name,
@@ -245,6 +245,7 @@ def tune(tasks, study_name, storage, data_path, input_dim, hyperparam_sample_arg
         data_path,
         hyperparam_sample_args,
         n_trials=12,
+        volume=volume,
     )
 
     # Run parallel studies
@@ -271,9 +272,10 @@ def tune1():
     storage = "sqlite:///dae-hp-tuning.db"
     data_path = '../data/silva_data_1.npy'
     input_dim = 2
+    volume = 1000
 
     hyperparam_sample_args = {}
-    tune(tasks, study_name, storage, data_path, input_dim, hyperparam_sample_args)
+    tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args)
 
 
 def tune2a():
@@ -282,6 +284,7 @@ def tune2a():
     storage = "sqlite:///dae-hp-tuning-2A.db"
     data_path = '../data/gapiness_dataset_2A_Dr.npy'
     input_dim = 5
+    volume = 3000
 
     hyperparam_sample_args = {
         'batch_sz': {'args': ('batch_sz', [16, 32, 64]), 'kwargs': {}},
@@ -294,7 +297,7 @@ def tune2a():
         'loss_fn': {'args': ('loss_fn', ['MSE', 'FJL']), 'kwargs': {}},
         'sigma_sqr': {'args': ('sigma_sqr', 1e-6, 1e-2), 'kwargs': {'log': True}},
     }
-    tune(tasks, study_name, storage, data_path, input_dim, hyperparam_sample_args)
+    tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args)
 
 
 if __name__ == '__main__':
