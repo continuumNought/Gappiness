@@ -32,7 +32,3 @@ def load_data(path_, batch_size, holdout_ratio=0.1, normalize=None):
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     return train_loader, holdout_dataset
-
-
-
-

@@ -131,7 +131,7 @@ def objective_factory(data_path, input_dim, max_epochs=100):
                     optimizer.step()
 
                 # Report train loss
-                epoch_loss /= len(train_loader)
+                epoch_loss /= len(train_loader) * sigma_sqr
                 writer.add_scalar("Loss/Train", epoch_loss, epoch)
                 trial.report(epoch_loss, epoch)
 
@@ -141,7 +141,7 @@ def objective_factory(data_path, input_dim, max_epochs=100):
                     inputs = test_dataset.tensors[0]
                     noisy_inputs = add_2d_gaussian_noise(inputs, cov_matrix=cov_matrix)
                     outputs = model(noisy_inputs)
-                    test_loss = criterion(noisy_inputs, outputs, inputs).item()
+                    test_loss = criterion(noisy_inputs, outputs, inputs).item()/sigma_sqr
                     writer.add_scalar("Loss/Test", test_loss, epoch)
 
                 if trial.should_prune():
@@ -182,7 +182,7 @@ def run_study(study_name, storage, input_dim, data_path, n_warmup_steps=10, n_tr
 
 
 def main():
-    tasks = 2
+    tasks = 8
     study_name = "DAE-Hyperparameter-Tuning"
     storage = "sqlite:///dae-hp-tuning.db"
     data_path = '../data/silva_data_1.npy'
@@ -194,7 +194,7 @@ def main():
         storage,
         input_dim,
         data_path,
-        n_trials=2,
+        n_trials=12,
     )
 
     # Run parallel studies
