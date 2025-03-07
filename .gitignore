@@ -3,3 +3,6 @@ data/
 model/
 __pycache__/
 .idea/
+artifacts/
+runs/
+*.db
