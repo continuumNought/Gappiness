@@ -37,3 +37,30 @@ def load_data(path_, batch_size, holdout_ratio=0.1, normalize=None):
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     return train_loader, holdout_dataset
+
+
+def load_shuffle(path_):
+    data = np.load(path_)
+    np.random.shuffle(data)
+
+    return data
+
+
+def normalize_split_batch(data, batch_size, holdout_ratio=0.01, normalize=None):
+    if normalize is not None:
+        data = normalize(data)
+
+    train_data, holdout_data = train_test_split(
+        torch.tensor(data, dtype=torch.float32),
+        test_size=holdout_ratio,
+        shuffle=False,
+    )
+
+    # Create datasets
+    train_dataset = TensorDataset(train_data)
+    holdout_dataset = TensorDataset(holdout_data)
+
+    # Create data loaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+
+    return train_loader, holdout_dataset

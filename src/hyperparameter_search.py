@@ -6,7 +6,7 @@ import functools as ft
 from torch.utils.tensorboard import SummaryWriter
 from gappiness.loss import FastJacobianRegularizedLoss, MSELossWrapper
 from gappiness.model import Autoencoder
-from gappiness.data import load_data, whiten
+from gappiness.data import standard_normalize, load_shuffle, normalize_split_batch
 from gappiness.noise import add_gaussian_noise
 from multiprocessing import Process
 from optuna.samplers import RandomSampler
@@ -71,7 +71,7 @@ class EarlyStop:
         return self.misses >= self.patience
 
 
-def objective_factory(data_path, input_dim, max_epochs=100, **kwargs):
+def objective_factory(data_path, input_dim, max_epochs=100, normalize=None, **kwargs):
     hyperparam_sample_args = {
         'batch_sz': {'args': ('batch_sz', [16, 32, 64]), 'kwargs': {}},
         'hidden_dim': {'args': ('hidden_dim', 5, 205), 'kwargs': {'step':10}},
@@ -86,6 +86,9 @@ def objective_factory(data_path, input_dim, max_epochs=100, **kwargs):
 
     for k in kwargs:
         hyperparam_sample_args[k] = kwargs[k]
+
+    # Preload data for consistency
+    data = load_shuffle(data_path)
 
     def objective(trial):
         hyperparams = {
@@ -128,11 +131,11 @@ def objective_factory(data_path, input_dim, max_epochs=100, **kwargs):
         }
 
         batch_sz = hyperparams['batch_sz']
-        train_loader, test_dataset = load_data(
-            data_path,
+        train_loader, test_dataset = normalize_split_batch(
+            data,
             batch_sz,
             0.01,
-            normalize=whiten,
+            normalize=normalize,
         )
 
         hidden_dim = hyperparams['hidden_dim']
@@ -219,6 +222,7 @@ def run_study(
     n_warmup_steps=10,
     n_trials=100,
     volume=1000,
+    normalize=None,
 ):
     study = optuna.create_study(
         direction="minimize",
@@ -230,13 +234,23 @@ def run_study(
     )
 
     study.optimize(
-        objective_factory(data_path, input_dim, **objective_kwargs),
+        objective_factory(data_path, input_dim, normalize=normalize, **objective_kwargs),
         n_trials=n_trials,
         n_jobs=1,
     )
 
 
-def tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args):
+def tune(
+        tasks,
+        study_name,
+        storage,
+        data_path,
+        input_dim,
+        volume,
+        hyperparam_sample_args,
+        n_trials=12,
+        normalize=None,
+):
     study_runner = ft.partial(
         run_study,
         study_name,
@@ -244,8 +258,9 @@ def tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sa
         input_dim,
         data_path,
         hyperparam_sample_args,
-        n_trials=12,
+        n_trials=n_trials,
         volume=volume,
+        normalize=normalize,
     )
 
     # Run parallel studies
@@ -266,10 +281,32 @@ def tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sa
     print(f'Best Loss: {study.best_value}')
 
 
+def tune_test():
+    tasks = 2
+    study_name = "DAE-Hyperparameter-Tuning-Test"
+    storage = "sqlite:///dae-hp-tuning-test.db"
+    data_path = '../data/silva_data_1.npy'
+    input_dim = 2
+    volume = 1000
+
+    hyperparam_sample_args = {}
+    tune(
+        tasks,
+        study_name,
+        storage,
+        data_path,
+        input_dim,
+        volume,
+        hyperparam_sample_args,
+        n_trials=2,
+        normalize=standard_normalize,
+    )
+
+
 def tune1():
     tasks = 8
-    study_name = "DAE-Hyperparameter-Tuning"
-    storage = "sqlite:///dae-hp-tuning.db"
+    study_name = "DAE-Hyperparameter-Tuning-1"
+    storage = "sqlite:///dae-hp-tuning-1.db"
     data_path = '../data/silva_data_1.npy'
     input_dim = 2
     volume = 1000
@@ -299,6 +336,9 @@ def tune2a():
     }
     tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args)
 
-
+# TODO
+# 1 Tune normalization size, maybe larger data less aggressive normalization
+# 2 Look into subsampling
+# 3 Maybe look at condition number
 if __name__ == '__main__':
-    tune1()
+    tune_test()
