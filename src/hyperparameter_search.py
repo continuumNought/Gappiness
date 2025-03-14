@@ -11,6 +11,7 @@ from gappiness.data import standard_normalize, load_shuffle, normalize_split_bat
 from gappiness.noise import add_gaussian_noise
 from multiprocessing import Process
 from optuna.samplers import RandomSampler
+from pathlib import Path
 
 
 class NodeVolumeLimitSampler(RandomSampler):
@@ -72,7 +73,14 @@ class EarlyStop:
         return self.misses >= self.patience
 
 
-def objective_factory(data_path, input_dim, max_epochs=100, normalize=None, **kwargs):
+def objective_factory(
+    data_path,
+    input_dim,
+    model_dir,
+    max_epochs=100,
+    normalize=None,
+    **kwargs
+):
     hyperparam_sample_args = {
         'batch_sz': {'args': ('batch_sz', [16, 32, 64]), 'kwargs': {}},
         'hidden_dim': {'args': ('hidden_dim', 5, 205), 'kwargs': {'step':10}},
@@ -214,6 +222,8 @@ def objective_factory(data_path, input_dim, max_epochs=100, normalize=None, **kw
                 }
             )
 
+        model.save(model_dir / f'model_{trial.number}')
+
         return test_loss
 
     return objective
@@ -239,8 +249,19 @@ def run_study(
         sampler=NodeVolumeLimitSampler(volume),
     )
 
+    # Setup model directory
+    model_dir = Path.cwd().parent / 'model' / study_name
+    if not model_dir.exists():
+        model_dir.mkdir()
+
     study.optimize(
-        objective_factory(data_path, input_dim, normalize=normalize, **objective_kwargs),
+        objective_factory(
+            data_path,
+            input_dim,
+            model_dir,
+            normalize=normalize,
+            **objective_kwargs
+        ),
         n_trials=n_trials,
         n_jobs=1,
     )
