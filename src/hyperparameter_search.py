@@ -1,6 +1,7 @@
 import numpy as np
 import optuna
 import torch
+import torch.nn as nn
 import time
 import functools as ft
 from torch.utils.tensorboard import SummaryWriter
@@ -158,6 +159,7 @@ def objective_factory(data_path, input_dim, max_epochs=100, normalize=None, **kw
         sigma_sqr = hyperparams['sigma_sqr']
         cov_matrix = sigma_sqr*np.identity(input_dim)
         criterion = select_loss(loss, model, sigma_sqr)
+        trial_criterion = nn.HuberLoss()
 
         with SummaryWriter(log_dir=f'runs/optuna_trial_{trial.number}') as writer:
             stopper = EarlyStop()
@@ -172,12 +174,16 @@ def objective_factory(data_path, input_dim, max_epochs=100, normalize=None, **kw
                     # Forward pass
                     outputs = model(noisy_inputs)
                     loss = criterion(noisy_inputs, outputs, targets)
-                    epoch_loss += loss.item()
 
                     # Backpropagation and optimization
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
+
+                    # Compute intertrial loss
+                    with torch.no_grad():
+                        std_loss = trial_criterion(outputs, targets)
+                        epoch_loss += std_loss.item()
 
                 # Report train loss
                 epoch_loss /= len(train_loader) * sigma_sqr
@@ -190,7 +196,7 @@ def objective_factory(data_path, input_dim, max_epochs=100, normalize=None, **kw
                     inputs = test_dataset.tensors[0]
                     noisy_inputs = add_gaussian_noise(inputs, np.zeros(input_dim), cov_matrix)
                     outputs = model(noisy_inputs)
-                    test_loss = criterion(noisy_inputs, outputs, inputs).item()/sigma_sqr
+                    test_loss = trial_criterion(outputs, inputs).item()/sigma_sqr
                     writer.add_scalar("Loss/Test", test_loss, epoch)
 
                 if trial.should_prune():
@@ -298,7 +304,7 @@ def tune_test():
         input_dim,
         volume,
         hyperparam_sample_args,
-        n_trials=2,
+        n_trials=1,
         normalize=standard_normalize,
     )
 
