@@ -334,19 +334,53 @@ def tune1():
     tasks = 8
     study_name = "DAE-Hyperparameter-Tuning-1"
     storage = "sqlite:///dae-hp-tuning-1.db"
-    data_path = '../data/silva_data_1.npy'
+    data_path = Path.cwd().parent/'data'/'silva_data_1.npy'
     input_dim = 2
     volume = 1000
 
     hyperparam_sample_args = {}
-    tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args)
+    tune(
+        tasks,
+        study_name,
+        storage,
+        data_path,
+        input_dim,
+        volume,
+        hyperparam_sample_args,
+        n_trials=12,
+        normalize=standard_normalize,
+    )
+
+
+def tune1_1d():
+    tasks = 8
+    study_name = "DAE-Hyperparameter-Tuning-1-1d"
+    storage = "sqlite:///dae-hp-tuning-1-1d.db"
+    data_path = Path.cwd().parent/'data'/'silva_data_1.npy'
+    input_dim = 2
+    volume = 1000
+
+    hyperparam_sample_args = {
+        'encoded_dim': {'args': ('encoded_dim', 1, 1), 'kwargs': {}},
+    }
+    tune(
+        tasks,
+        study_name,
+        storage,
+        data_path,
+        input_dim,
+        volume,
+        hyperparam_sample_args,
+        n_trials=12,
+        normalize=standard_normalize,
+    )
 
 
 def tune2a():
     tasks = 8
     study_name = "DAE-Hyperparameter-Tuning-2A"
     storage = "sqlite:///dae-hp-tuning-2A.db"
-    data_path = '../data/gapiness_dataset_2A_Dr.npy'
+    data_path = Path.cwd().parent/'data'/'gapiness_dataset_2A_Dr.npy'
     input_dim = 5
     volume = 3000
 
