@@ -7,7 +7,7 @@ import functools as ft
 from torch.utils.tensorboard import SummaryWriter
 from gappiness.loss import FastJacobianRegularizedLoss, MSELossWrapper
 from gappiness.model import Autoencoder
-from gappiness.data import standard_normalize, load_shuffle, normalize_split_batch
+from gappiness.data import whiten, standard_normalize, load_shuffle, normalize_split_batch
 from gappiness.noise import add_gaussian_noise
 from multiprocessing import Process
 from optuna.samplers import RandomSampler
@@ -395,7 +395,17 @@ def tune2a():
         'loss_fn': {'args': ('loss_fn', ['MSE', 'FJL']), 'kwargs': {}},
         'sigma_sqr': {'args': ('sigma_sqr', 1e-6, 1e-2), 'kwargs': {'log': True}},
     }
-    tune(tasks, study_name, storage, data_path, input_dim, volume, hyperparam_sample_args)
+    tune(
+        tasks,
+        study_name,
+        storage,
+        data_path,
+        input_dim,
+        volume,
+        hyperparam_sample_args,
+        n_trials=12,
+        normalize=whiten,
+    )
 
 # TODO
 # 1 Tune normalization size, maybe larger data less aggressive normalization
